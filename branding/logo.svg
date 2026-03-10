@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Quest QR Launch logo</title>
+  <desc id="desc">A bright QR tile pattern with an outward launch arrow.</desc>
+  <rect width="256" height="256" rx="48" fill="#F7F6F1"/>
+  <rect x="32" y="32" width="64" height="64" rx="12" fill="#132A13"/>
+  <rect x="48" y="48" width="32" height="32" rx="6" fill="#F7F6F1"/>
+  <rect x="160" y="32" width="64" height="64" rx="12" fill="#132A13"/>
+  <rect x="176" y="48" width="32" height="32" rx="6" fill="#F7F6F1"/>
+  <rect x="32" y="160" width="64" height="64" rx="12" fill="#132A13"/>
+  <rect x="48" y="176" width="32" height="32" rx="6" fill="#F7F6F1"/>
+  <rect x="120" y="120" width="20" height="20" rx="4" fill="#132A13"/>
+  <rect x="148" y="120" width="20" height="20" rx="4" fill="#132A13"/>
+  <rect x="120" y="148" width="20" height="20" rx="4" fill="#132A13"/>
+  <rect x="148" y="176" width="20" height="20" rx="4" fill="#132A13"/>
+  <path d="M145 168l44-44h-24V96h40v40h-28l-44 44z" fill="#3FA34D"/>
+</svg>
+

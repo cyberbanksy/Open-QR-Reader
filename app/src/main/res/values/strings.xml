@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Quest QR Launch</string>
+    <string name="subtitle">Scan once. Open in the Quest browser immediately.</string>
+    <string name="logo_content_description">Quest QR Launch logo</string>
+    <string name="privacy_promise">No scan history, no analytics, no in-app browser. Only valid http(s) links are handed off.</string>
+
+    <string name="status_ready">Scanner ready</string>
+    <string name="status_scanning">Point the headset at a QR code</string>
+    <string name="status_opening_browser">Opening in the browser</string>
+    <string name="status_invalid_code">That QR code is not a supported web link</string>
+    <string name="status_browser_missing">No external browser was available</string>
+    <string name="status_permission_needed">Camera access is required</string>
+    <string name="status_permission_denied">Camera access is blocked in settings</string>
+    <string name="status_camera_unavailable">The headset camera could not be opened</string>
+    <string name="status_unsupported_device">This headset does not expose the Quest passthrough Camera2 API</string>
+
+    <string name="hint_ready">Grant camera access if prompted, then center a QR code inside the frame.</string>
+    <string name="hint_scanning">The app scans in memory and immediately exits after handing off a valid link.</string>
+    <string name="hint_invalid_code">Only absolute http and https URLs are accepted. Text, Wi-Fi, file, intent, and javascript payloads are ignored.</string>
+    <string name="hint_browser_missing">Install or enable the system browser on the headset and try again.</string>
+    <string name="hint_permission_needed">Both the Android camera permission and Horizon OS headset-camera permission must be granted.</string>
+    <string name="hint_permission_denied">Open app settings, enable both camera permissions, and return to continue scanning.</string>
+    <string name="hint_unsupported_device">Quest 3 and Quest 3s on Horizon OS v76 or newer are required for this build.</string>
+
+    <string name="action_grant_access">Grant camera access</string>
+    <string name="action_open_settings">Open app settings</string>
+    <string name="action_rescan">Rescan</string>
+    <string name="action_unavailable">Unsupported device</string>
+</resources>
+
