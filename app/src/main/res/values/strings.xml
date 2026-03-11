@@ -8,7 +8,7 @@
     <string name="status_permission_needed">Camera access</string>
     <string name="status_permission_denied">Camera blocked</string>
     <string name="status_camera_unavailable">Camera busy</string>
-    <string name="status_unsupported_device">Quest 3 only</string>
+    <string name="status_unsupported_device">Quest 3 or 3S</string>
     <string name="action_grant_access">Allow camera</string>
     <string name="action_open_settings">Open settings</string>
     <string name="action_rescan">Scan again</string>

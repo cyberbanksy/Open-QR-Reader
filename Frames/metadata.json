@@ -1,7 +1,0 @@
-{
-  "name": "QR Scanner",
-  "description": "A Meta Quest-style 2D utility for scanning QR codes in XR.",
-  "requestFramePermissions": [
-    "camera"
-  ]
-}
