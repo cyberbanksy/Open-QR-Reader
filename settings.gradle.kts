@@ -14,6 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "QuestQrLaunch"
+rootProject.name = "OpenQR"
 include(":app")
-

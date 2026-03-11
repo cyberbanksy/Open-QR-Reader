@@ -4,7 +4,7 @@ import android.util.Log
 import com.zephyr.qr.BuildConfig
 
 object AppLogger {
-    private const val TAG = "QuestQrLaunch"
+    private const val TAG = "OpenQR"
 
     fun debug(message: String) {
         if (BuildConfig.DEBUG) {

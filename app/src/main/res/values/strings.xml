@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">QR Code</string>
-    <string name="logo_content_description">QR Code icon</string>
+    <string name="app_name">OpenQR</string>
+    <string name="logo_content_description">OpenQR icon</string>
     <string name="status_scanning">Scanning</string>
     <string name="status_invalid_code">Web link only</string>
     <string name="status_browser_missing">No browser</string>

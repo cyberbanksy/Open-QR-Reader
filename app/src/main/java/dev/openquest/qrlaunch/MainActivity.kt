@@ -64,7 +64,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        setTheme(R.style.Theme_QuestQrLaunch)
+        setTheme(R.style.Theme_OpenQR)
         super.onCreate(savedInstanceState)
         AppLogger.info("MainActivity created")
         setContentView(R.layout.activity_main)
