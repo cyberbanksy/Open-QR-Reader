@@ -1,13 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="surface">#F7F6F1</color>
-    <color name="preview_frame">#E8E5DA</color>
-    <color name="status_background">#E2F2E4</color>
-    <color name="text_primary">#132A13</color>
-    <color name="text_secondary">#51624F</color>
-    <color name="accent">#3FA34D</color>
-    <color name="accent_soft">#9FD8A7</color>
+    <color name="surface">#0A0A0A</color>
+    <color name="surface_raised">#1C1C1C</color>
+    <color name="surface_raised_alt">#1C1C1C</color>
+    <color name="surface_warm">#121212</color>
+    <color name="preview_frame">#121212</color>
+    <color name="status_background">#1C1C1C</color>
+    <color name="text_primary">#FFFFFF</color>
+    <color name="text_secondary">#B5B5B8</color>
+    <color name="text_tertiary">#7B7B80</color>
+    <color name="accent">#4A90E2</color>
+    <color name="accent_soft">#24384E</color>
+    <color name="accent_strong">#6CA5EA</color>
+    <color name="accent_glow">#734A90E2</color>
+    <color name="surface_shadow">#080808</color>
+    <color name="warning">#FF935C</color>
+    <color name="icon_badge">#2D2D2D</color>
+    <color name="button_fill">#3B4A5A</color>
+    <color name="button_fill_pressed">#455668</color>
+    <color name="button_fill_disabled">#2D2D2D</color>
+    <color name="button_text">#FFFFFF</color>
+    <color name="action_button_text">#FFFFFF</color>
     <color name="on_accent">#FFFFFF</color>
-    <color name="ic_launcher_background">#F7F6F1</color>
+    <color name="ic_launcher_background">#121212</color>
 </resources>
-

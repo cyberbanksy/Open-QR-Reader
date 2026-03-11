@@ -12,11 +12,10 @@
 - No in-app web rendering
 - No storage permission
 - No internet permission
-- No logging of QR payloads
+- No logging of QR payloads or scanned URLs
 - Backups disabled
 - Immediate process handoff to the system browser for supported links
 
 ## Disclosure
 
 If you identify a security issue, open a private report before publishing details.
-

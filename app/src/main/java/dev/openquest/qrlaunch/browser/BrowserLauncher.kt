@@ -1,8 +1,9 @@
-package dev.openquest.qrlaunch.browser
+package com.zephyr.qr.browser
 
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
+import com.zephyr.qr.logging.AppLogger
 import java.net.URI
 
 object BrowserLauncher {
@@ -26,14 +27,19 @@ object BrowserLauncher {
 
     fun launchExternal(activity: Activity, rawValue: String): LaunchResult {
         val sanitized = sanitize(rawValue) ?: return LaunchResult.InvalidUrl
-        val uri = Uri.parse(sanitized)
+        return launchExternalUri(activity, Uri.parse(sanitized))
+    }
+
+    fun launchExternalUri(activity: Activity, uri: Uri): LaunchResult {
         val intent = Intent(Intent.ACTION_VIEW, uri)
             .addCategory(Intent.CATEGORY_BROWSABLE)
 
         if (intent.resolveActivity(activity.packageManager) == null) {
+            AppLogger.warn("No browser activity resolved for supported web URL")
             return LaunchResult.NoBrowser
         }
 
+        AppLogger.info("Launching external browser for supported web URL")
         activity.startActivity(intent)
         return LaunchResult.Launched(uri)
     }

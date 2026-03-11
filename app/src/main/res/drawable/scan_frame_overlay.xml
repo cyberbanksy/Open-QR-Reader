@@ -1,13 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item>
-        <shape android:shape="rectangle">
-            <solid android:color="#00000000" />
-            <stroke
-                android:width="4dp"
-                android:color="@color/accent_soft" />
-            <corners android:radius="22dp" />
-        </shape>
-    </item>
-</layer-list>
-
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="320dp"
+    android:viewportWidth="320"
+    android:viewportHeight="320">
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M44,88V56a12,12 0 0,1 12,-12h32"
+        android:strokeColor="#A02E8FFF"
+        android:strokeLineCap="round"
+        android:strokeWidth="5" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M232,44h32a12,12 0 0,1 12,12v32"
+        android:strokeColor="#A02E8FFF"
+        android:strokeLineCap="round"
+        android:strokeWidth="5" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M276,232v32a12,12 0 0,1 -12,12h-32"
+        android:strokeColor="#A02E8FFF"
+        android:strokeLineCap="round"
+        android:strokeWidth="5" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M88,276H56a12,12 0 0,1 -12,-12v-32"
+        android:strokeColor="#A02E8FFF"
+        android:strokeLineCap="round"
+        android:strokeWidth="5" />
+</vector>

@@ -2,6 +2,7 @@
 .gradle-home/
 .idea/
 .kotlin/
+.env.arborxr
 local.properties
 build/
 captures/

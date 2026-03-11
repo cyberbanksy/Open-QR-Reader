@@ -1,4 +1,4 @@
-package dev.openquest.qrlaunch.camera
+package com.zephyr.qr.camera
 
 import android.annotation.SuppressLint
 import android.content.Context
@@ -18,6 +18,8 @@ import android.os.HandlerThread
 import android.util.Size
 import android.view.Surface
 import android.view.TextureView
+import com.zephyr.qr.R
+import com.zephyr.qr.logging.AppLogger
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -42,6 +44,7 @@ class QuestCameraSession(
     private var activeSize: Size? = null
 
     fun resumeScanning() {
+        AppLogger.debug("Scanner resumed")
         scanInProgress.set(false)
     }
 
@@ -50,24 +53,29 @@ class QuestCameraSession(
     @SuppressLint("MissingPermission")
     fun start() {
         if (!textureView.isAvailable || captureSession != null || cameraDevice != null) {
+            AppLogger.debug("Ignoring scanner start because a session is already active or preview is unavailable")
             return
         }
 
         val config = findPassthroughConfig()
         if (config == null) {
-            dispatchStatus(dev.openquest.qrlaunch.R.string.status_unsupported_device)
+            AppLogger.warn("No passthrough Camera2 configuration found")
+            dispatchStatus(R.string.status_unsupported_device)
             return
         }
 
         startBackgroundThread()
         activeSize = chooseSize(config.outputSizes)
         val size = activeSize ?: run {
-            dispatchStatus(dev.openquest.qrlaunch.R.string.status_camera_unavailable)
+            AppLogger.error("Unable to select a passthrough camera output size")
+            dispatchStatus(R.string.status_camera_unavailable)
             return
         }
+        AppLogger.info("Opening passthrough camera ${config.cameraId} at ${size.width}x${size.height}")
 
         val surfaceTexture = textureView.surfaceTexture ?: run {
-            dispatchStatus(dev.openquest.qrlaunch.R.string.status_camera_unavailable)
+            AppLogger.error("Preview surface texture was unavailable when starting the camera")
+            dispatchStatus(R.string.status_camera_unavailable)
             return
         }
 
@@ -87,11 +95,14 @@ class QuestCameraSession(
                         image.use { latest ->
                             val result = decoder.decode(latest)
                             if (result != null && scanInProgress.compareAndSet(false, true)) {
+                                AppLogger.info("QR decode succeeded")
                                 textureView.post {
                                     onQrDetected(result.text)
                                 }
                             }
                         }
+                    } catch (t: Throwable) {
+                        AppLogger.error("QR decode pipeline failed", t)
                     } finally {
                         frameInFlight.set(false)
                     }
@@ -101,25 +112,29 @@ class QuestCameraSession(
 
         cameraManager.openCamera(config.cameraId, object : CameraDevice.StateCallback() {
             override fun onOpened(camera: CameraDevice) {
+                AppLogger.info("Passthrough camera opened")
                 cameraDevice = camera
                 createSession(camera, surfaceTexture)
             }
 
             override fun onDisconnected(camera: CameraDevice) {
+                AppLogger.warn("Passthrough camera disconnected")
                 camera.close()
                 stop()
-                dispatchStatus(dev.openquest.qrlaunch.R.string.status_camera_unavailable)
+                dispatchStatus(R.string.status_camera_unavailable)
             }
 
             override fun onError(camera: CameraDevice, error: Int) {
+                AppLogger.error("Passthrough camera error code=$error")
                 camera.close()
                 stop()
-                dispatchStatus(dev.openquest.qrlaunch.R.string.status_camera_unavailable)
+                dispatchStatus(R.string.status_camera_unavailable)
             }
         }, backgroundHandler)
     }
 
     fun stop() {
+        AppLogger.debug("Stopping scanner session")
         captureSession?.close()
         captureSession = null
         cameraDevice?.close()
@@ -145,6 +160,7 @@ class QuestCameraSession(
                 cameraExecutor,
                 object : CameraCaptureSession.StateCallback() {
                     override fun onConfigured(session: CameraCaptureSession) {
+                        AppLogger.info("Camera capture session configured")
                         captureSession = session
                         val request = camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
                             addTarget(previewSurface)
@@ -156,12 +172,13 @@ class QuestCameraSession(
                             set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
                         }.build()
                         session.setRepeatingRequest(request, null, backgroundHandler)
-                        dispatchStatus(dev.openquest.qrlaunch.R.string.status_scanning)
+                        dispatchStatus(R.string.status_scanning)
                     }
 
                     override fun onConfigureFailed(session: CameraCaptureSession) {
+                        AppLogger.error("Camera capture session configuration failed")
                         stop()
-                        dispatchStatus(dev.openquest.qrlaunch.R.string.status_camera_unavailable)
+                        dispatchStatus(R.string.status_camera_unavailable)
                     }
                 }
             )
@@ -172,6 +189,7 @@ class QuestCameraSession(
         if (backgroundThread != null) {
             return
         }
+        AppLogger.debug("Starting camera background thread")
         backgroundThread = HandlerThread("quest-camera").also { thread ->
             thread.start()
             backgroundHandler = Handler(thread.looper)
@@ -179,6 +197,7 @@ class QuestCameraSession(
     }
 
     private fun stopBackgroundThread() {
+        AppLogger.debug("Stopping camera background thread")
         backgroundThread?.quitSafely()
         backgroundThread?.join()
         backgroundThread = null

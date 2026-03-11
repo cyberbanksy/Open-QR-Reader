@@ -1,4 +1,4 @@
-package dev.openquest.qrlaunch.camera
+package com.zephyr.qr.camera
 
 import android.media.Image
 import com.google.zxing.BinaryBitmap

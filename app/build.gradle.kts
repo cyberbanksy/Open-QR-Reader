@@ -1,18 +1,30 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
 
+val versionProperties = Properties().apply {
+    val versionFile = rootProject.file("version.properties")
+    versionFile.inputStream().use { load(it) }
+}
+
+val configuredVersionCode = providers.gradleProperty("appVersionCode").orNull?.toIntOrNull()
+    ?: versionProperties.getProperty("VERSION_CODE").toInt()
+val configuredVersionName = providers.gradleProperty("appVersionName").orNull
+    ?: versionProperties.getProperty("VERSION_NAME")
+
 android {
-    namespace = "dev.openquest.qrlaunch"
+    namespace = "com.zephyr.qr"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "dev.openquest.qrlaunch"
+        applicationId = "com.zephyr.qr"
         minSdk = 34
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = configuredVersionCode
+        versionName = configuredVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
@@ -23,6 +35,12 @@ android {
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
+        }
+        create("managed") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".debug"
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
         }
         release {
             isMinifyEnabled = true
@@ -43,6 +61,7 @@ android {
     }
 
     buildFeatures {
+        buildConfig = true
         viewBinding = true
     }
 

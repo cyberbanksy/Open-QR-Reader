@@ -1,4 +1,4 @@
-package dev.openquest.qrlaunch.browser
+package com.zephyr.qr.browser
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
