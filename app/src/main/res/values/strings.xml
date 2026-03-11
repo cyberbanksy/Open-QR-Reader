@@ -3,16 +3,19 @@
     <string name="app_name">OpenQR</string>
     <string name="logo_content_description">OpenQR icon</string>
     <string name="status_scanning">Scanning</string>
+    <string name="status_ready">Ready</string>
     <string name="status_invalid_code">Web link only</string>
     <string name="status_browser_missing">No browser</string>
     <string name="status_permission_needed">Camera access</string>
     <string name="status_permission_denied">Camera blocked</string>
     <string name="status_camera_unavailable">Camera busy</string>
     <string name="status_unsupported_device">Quest 3 or 3S</string>
+    <string name="action_start_scan">Scan</string>
+    <string name="action_camera_mode">Camera mode</string>
     <string name="action_grant_access">Allow camera</string>
     <string name="action_open_settings">Open settings</string>
     <string name="action_rescan">Scan again</string>
     <string name="action_unavailable">Unavailable</string>
-    <string name="action_scanning">Scanning...</string>
-    <string name="action_opening">Opening...</string>
+    <string name="action_scanning">Scanning</string>
+    <string name="action_opening">Opening</string>
 </resources>

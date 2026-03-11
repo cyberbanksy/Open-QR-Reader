@@ -6,7 +6,7 @@ plugins {
 }
 
 val versionProperties = Properties().apply {
-    val versionFile = rootProject.file("version.properties")
+    val versionFile = project.file("version.properties")
     versionFile.inputStream().use { load(it) }
 }
 
@@ -16,11 +16,11 @@ val configuredVersionName = providers.gradleProperty("appVersionName").orNull
     ?: versionProperties.getProperty("VERSION_NAME")
 
 android {
-    namespace = "com.zephyr.qr"
+    namespace = "com.openqr.app"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.zephyr.qr"
+        applicationId = "com.openqr.app"
         minSdk = 34
         targetSdk = 34
         versionCode = configuredVersionCode

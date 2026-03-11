@@ -33,6 +33,7 @@
 
     <application
         android:allowBackup="false"
+        android:banner="@drawable/app_banner"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupOnly="false"
         android:fullBackupContent="@xml/backup_rules"

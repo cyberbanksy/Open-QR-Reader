@@ -1,35 +1,40 @@
-package com.zephyr.qr
+package com.openqr.app
 
 import android.Manifest
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.content.Intent
+import android.graphics.Color
 import android.graphics.RenderEffect
 import android.graphics.Shader
+import android.graphics.drawable.ColorDrawable
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
-import android.view.TextureView
 import android.view.View
 import android.view.animation.LinearInterpolator
 import android.widget.Button
 import android.widget.ImageView
+import android.widget.ImageButton
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator
-import com.zephyr.qr.browser.BrowserLauncher
-import com.zephyr.qr.browser.LaunchResult
-import com.zephyr.qr.camera.QuestCameraSession
-import com.zephyr.qr.logging.AppLogger
+import com.openqr.app.browser.BrowserLauncher
+import com.openqr.app.browser.LaunchResult
+import com.openqr.app.camera.QuestCameraSession
+import com.openqr.app.logging.AppLogger
 
 class MainActivity : AppCompatActivity() {
     private lateinit var stateIcon: ImageView
     private lateinit var statusText: TextView
     private lateinit var actionButton: Button
-    private lateinit var cameraPreview: TextureView
+    private lateinit var cameraModeButton: ImageButton
+    private lateinit var cameraPreview: ImageView
+    private lateinit var previewScrim: View
     private lateinit var scannerEdgeGlow: View
     private lateinit var pulseRing: View
     private lateinit var bracketsView: ImageView
@@ -41,7 +46,10 @@ class MainActivity : AppCompatActivity() {
     private var shouldStartWhenReady = false
     private var permanentDenial = false
     private var browserHandoffComplete = false
+    private var scanRequested = false
+    private var cameraModeEnabled = false
     private var pendingBrowserHandoff: Runnable? = null
+    private var pendingScanTimeout: Runnable? = null
     private var pulseAnimator: AnimatorSet? = null
     private var bracketsAnimator: ObjectAnimator? = null
     private var sweepAnimator: ObjectAnimator? = null
@@ -57,7 +65,7 @@ class MainActivity : AppCompatActivity() {
         }
         if (hasAllPermissions()) {
             permanentDenial = false
-            startScanner()
+            renderReadyState()
         } else {
             renderPermissionState()
         }
@@ -67,28 +75,32 @@ class MainActivity : AppCompatActivity() {
         setTheme(R.style.Theme_OpenQR)
         super.onCreate(savedInstanceState)
         AppLogger.info("MainActivity created")
+        window.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         setContentView(R.layout.activity_main)
 
         stateIcon = findViewById(R.id.state_icon)
         statusText = findViewById(R.id.status_text)
         actionButton = findViewById(R.id.action_button)
+        cameraModeButton = findViewById(R.id.camera_mode_button)
         cameraPreview = findViewById(R.id.camera_preview)
+        previewScrim = findViewById(R.id.preview_scrim)
         scannerEdgeGlow = findViewById(R.id.scanner_edge_glow)
         pulseRing = findViewById(R.id.pulse_ring)
         bracketsView = findViewById(R.id.brackets_view)
         sweepView = findViewById(R.id.sweep_view)
         centerDot = findViewById(R.id.center_dot)
-        cameraPreview.setRenderEffect(RenderEffect.createBlurEffect(28f, 28f, Shader.TileMode.CLAMP))
+        applyPreviewMode()
 
         cameraSession = QuestCameraSession(
             context = this,
-            textureView = cameraPreview,
-            onQrDetected = ::handleQrCode,
-            onStatusChanged = { messageId -> handleCameraStatus(messageId) }
+            onQrDetected = { value -> runOnUiThread { handleQrCode(value) } },
+            onStatusChanged = { messageId -> runOnUiThread { handleCameraStatus(messageId) } },
+            onPreviewFrame = ::renderPreviewFrame
         )
 
         actionButton.setOnClickListener {
             if (hasAllPermissions()) {
+                scanRequested = true
                 startScanner()
             } else if (permanentDenial) {
                 openAppSettings()
@@ -96,41 +108,24 @@ class MainActivity : AppCompatActivity() {
                 requestPermissions()
             }
         }
-
-        cameraPreview.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
-            override fun onSurfaceTextureAvailable(
-                surface: android.graphics.SurfaceTexture,
-                width: Int,
-                height: Int
-            ) {
-                if (shouldStartWhenReady && hasAllPermissions()) {
-                    startScanner()
+        cameraModeButton.setOnClickListener {
+            if (hasAllPermissions()) {
+                cameraModeEnabled = !cameraModeEnabled
+                if (!cameraModeEnabled) {
+                    clearPreviewFrame()
                 }
+                applyPreviewMode()
+                if (cameraModeEnabled) {
+                    scanRequested = true
+                    startScanner()
+                } else if (!scanRequested) {
+                    renderReadyState()
+                }
+            } else if (permanentDenial) {
+                openAppSettings()
+            } else {
+                requestPermissions()
             }
-
-            override fun onSurfaceTextureSizeChanged(
-                surface: android.graphics.SurfaceTexture,
-                width: Int,
-                height: Int
-            ) = Unit
-
-            override fun onSurfaceTextureDestroyed(surface: android.graphics.SurfaceTexture): Boolean {
-                cameraSession.stop()
-                return true
-            }
-
-            override fun onSurfaceTextureUpdated(surface: android.graphics.SurfaceTexture) = Unit
-        }
-
-        if (!cameraSession.hasPassthroughCamera()) {
-            AppLogger.warn("Passthrough camera not available on this device")
-            renderState(
-                statusRes = R.string.status_unsupported_device,
-                buttonTextRes = R.string.action_unavailable,
-                iconRes = R.drawable.ic_state_warning,
-                buttonEnabled = false
-            )
-            return
         }
 
         renderPermissionState()
@@ -139,7 +134,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         AppLogger.debug("MainActivity resumed")
-        if (!browserHandoffComplete && hasAllPermissions()) {
+        if (!browserHandoffComplete && scanRequested && hasAllPermissions()) {
             shouldStartWhenReady = true
             startScanner()
         }
@@ -149,13 +144,53 @@ class MainActivity : AppCompatActivity() {
         super.onPause()
         AppLogger.debug("MainActivity paused")
         clearPendingBrowserHandoff()
+        clearPendingScanTimeout()
         stopVisualAnimations()
         cameraSession.stop()
+        clearPreviewFrame()
+        scanRequested = false
+    }
+
+    override fun onStop() {
+        super.onStop()
+        AppLogger.debug("MainActivity stopped")
+        clearPendingBrowserHandoff()
+        clearPendingScanTimeout()
+        stopVisualAnimations()
+        if (::cameraSession.isInitialized) {
+            cameraSession.stop()
+        }
+        clearPreviewFrame()
+        scanRequested = false
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (!::cameraSession.isInitialized) {
+            return
+        }
+
+        if (!hasFocus) {
+            AppLogger.debug("Window focus lost; stopping scanner early")
+            clearPendingBrowserHandoff()
+            clearPendingScanTimeout()
+            stopVisualAnimations()
+            cameraSession.stop()
+            clearPreviewFrame()
+            scanRequested = false
+            return
+        }
+
+        if (!browserHandoffComplete && scanRequested && hasAllPermissions()) {
+            AppLogger.debug("Window focus regained; resuming scanner")
+            shouldStartWhenReady = true
+            startScanner()
+        }
     }
 
     private fun renderPermissionState() {
         if (hasAllPermissions()) {
-            startScanner()
+            renderReadyState()
             return
         }
 
@@ -171,11 +206,31 @@ class MainActivity : AppCompatActivity() {
         permissionLauncher.launch(REQUIRED_PERMISSIONS)
     }
 
+    private fun renderReadyState() {
+        renderState(
+            statusRes = null,
+            buttonTextRes = R.string.action_start_scan,
+            iconRes = null
+        )
+    }
+
     private fun startScanner() {
         clearPendingBrowserHandoff()
-        if (!cameraPreview.isAvailable || !hasAllPermissions()) {
+        clearPendingScanTimeout()
+        if (!cameraSession.hasPassthroughCamera()) {
+            AppLogger.warn("Passthrough camera not available on this device")
+            renderState(
+                statusRes = R.string.status_unsupported_device,
+                buttonTextRes = R.string.action_unavailable,
+                iconRes = R.drawable.ic_state_warning,
+                buttonEnabled = false
+            )
+            scanRequested = false
+            return
+        }
+        if (!hasAllPermissions()) {
             AppLogger.debug(
-                "Scanner start deferred: previewAvailable=${cameraPreview.isAvailable}, allPermissions=${hasAllPermissions()}"
+                "Scanner start deferred: allPermissions=${hasAllPermissions()}"
             )
             shouldStartWhenReady = true
             return
@@ -186,6 +241,14 @@ class MainActivity : AppCompatActivity() {
         renderScanningState()
         cameraSession.resumeScanning()
         cameraSession.start()
+        pendingScanTimeout = Runnable {
+            AppLogger.info("Scan session timed out; releasing camera")
+            cameraSession.stop()
+            clearPreviewFrame()
+            scanRequested = false
+            renderReadyState()
+        }
+        mainHandler.postDelayed(pendingScanTimeout!!, SCAN_SESSION_TIMEOUT_MS)
     }
 
     private fun renderScanningState() {
@@ -195,10 +258,14 @@ class MainActivity : AppCompatActivity() {
         actionButton.visibility = View.VISIBLE
         actionButton.isEnabled = false
         actionButton.setText(R.string.action_scanning)
+        cameraModeButton.visibility = View.VISIBLE
+        cameraModeButton.isEnabled = false
+        cameraModeButton.isSelected = cameraModeEnabled
         pulseRing.visibility = View.VISIBLE
         bracketsView.visibility = View.VISIBLE
         sweepView.visibility = View.VISIBLE
         centerDot.visibility = View.VISIBLE
+        applyPreviewMode()
         startScanAnimation()
     }
 
@@ -207,17 +274,21 @@ class MainActivity : AppCompatActivity() {
         val sanitized = BrowserLauncher.sanitize(rawValue)
         if (sanitized == null) {
             AppLogger.warn("Rejected QR content because it is not a supported web URL")
+            clearPendingScanTimeout()
             cameraSession.stop()
+            scanRequested = false
             renderState(
                 statusRes = R.string.status_invalid_code,
                 buttonTextRes = R.string.action_rescan,
                 iconRes = R.drawable.ic_state_warning
             )
-            mainHandler.postDelayed({ startScanner() }, INVALID_CODE_RETRY_DELAY_MS)
+            clearPreviewFrame()
             return
         }
 
+        clearPendingScanTimeout()
         cameraSession.stop()
+        scanRequested = false
         renderState(
             statusRes = null,
             buttonTextRes = R.string.action_opening,
@@ -242,16 +313,19 @@ class MainActivity : AppCompatActivity() {
 
                 LaunchResult.InvalidUrl -> {
                     AppLogger.warn("Supported URL became invalid before browser handoff")
+                    scanRequested = false
+                    clearPreviewFrame()
                     renderState(
                         statusRes = R.string.status_invalid_code,
                         buttonTextRes = R.string.action_rescan,
                         iconRes = R.drawable.ic_state_warning
                     )
-                    mainHandler.postDelayed({ startScanner() }, INVALID_CODE_RETRY_DELAY_MS)
                 }
 
                 LaunchResult.NoBrowser -> {
                     AppLogger.error("External browser handoff failed because no browser resolved")
+                    scanRequested = false
+                    clearPreviewFrame()
                     renderState(
                         statusRes = R.string.status_browser_missing,
                         buttonTextRes = R.string.action_rescan,
@@ -327,6 +401,40 @@ class MainActivity : AppCompatActivity() {
         actionButton.visibility = View.VISIBLE
         actionButton.isEnabled = buttonEnabled
         actionButton.setText(buttonTextRes)
+        cameraModeButton.visibility = View.VISIBLE
+        cameraModeButton.isEnabled = true
+        cameraModeButton.isSelected = cameraModeEnabled
+        applyPreviewMode()
+    }
+
+    private fun applyPreviewMode() {
+        val previewAlpha = if (cameraModeEnabled) 0.98f else 0f
+        val scrimAlpha = if (cameraModeEnabled) 0.10f else 0f
+        val glowAlpha = if (cameraModeEnabled) 0.48f else 0.78f
+
+        cameraPreview.setRenderEffect(
+            if (cameraModeEnabled) {
+                RenderEffect.createBlurEffect(1.5f, 1.5f, Shader.TileMode.CLAMP)
+            } else {
+                null
+            }
+        )
+        cameraPreview.alpha = previewAlpha
+        previewScrim.alpha = scrimAlpha
+        scannerEdgeGlow.alpha = glowAlpha
+        if (::cameraModeButton.isInitialized) {
+            cameraModeButton.isSelected = cameraModeEnabled
+        }
+    }
+
+    private fun renderPreviewFrame(bitmap: Bitmap) {
+        cameraPreview.post {
+            cameraPreview.setImageBitmap(bitmap)
+        }
+    }
+
+    private fun clearPreviewFrame() {
+        cameraPreview.setImageDrawable(null)
     }
 
     private fun startScanAnimation() {
@@ -419,10 +527,15 @@ class MainActivity : AppCompatActivity() {
         pendingBrowserHandoff = null
     }
 
+    private fun clearPendingScanTimeout() {
+        pendingScanTimeout?.let(mainHandler::removeCallbacks)
+        pendingScanTimeout = null
+    }
+
     private companion object {
         const val BROWSER_HANDOFF_DELAY_MS = 550L
         const val FINISH_AFTER_HANDOFF_DELAY_MS = 250L
-        const val INVALID_CODE_RETRY_DELAY_MS = 1100L
+        const val SCAN_SESSION_TIMEOUT_MS = 3500L
         val REQUIRED_PERMISSIONS = arrayOf(
             Manifest.permission.CAMERA,
             "horizonos.permission.HEADSET_CAMERA"

@@ -1,7 +1,7 @@
-package com.zephyr.qr.logging
+package com.openqr.app.logging
 
 import android.util.Log
-import com.zephyr.qr.BuildConfig
+import com.openqr.app.BuildConfig
 
 object AppLogger {
     private const val TAG = "OpenQR"

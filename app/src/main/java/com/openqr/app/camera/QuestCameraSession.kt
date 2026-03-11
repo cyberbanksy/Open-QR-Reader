@@ -1,10 +1,9 @@
-package com.zephyr.qr.camera
+package com.openqr.app.camera
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.ImageFormat
-import android.graphics.Matrix
-import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraDevice
@@ -15,19 +14,18 @@ import android.hardware.camera2.params.SessionConfiguration
 import android.media.ImageReader
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.SystemClock
 import android.util.Size
-import android.view.Surface
-import android.view.TextureView
-import com.zephyr.qr.R
-import com.zephyr.qr.logging.AppLogger
+import com.openqr.app.R
+import com.openqr.app.logging.AppLogger
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 class QuestCameraSession(
     context: Context,
-    private val textureView: TextureView,
     private val onQrDetected: (String) -> Unit,
-    private val onStatusChanged: (Int) -> Unit
+    private val onStatusChanged: (Int) -> Unit,
+    private val onPreviewFrame: (Bitmap) -> Unit
 ) {
     private val appContext = context.applicationContext
     private val cameraManager = appContext.getSystemService(CameraManager::class.java)
@@ -35,13 +33,14 @@ class QuestCameraSession(
     private val cameraExecutor = Executors.newSingleThreadExecutor()
     private val scanInProgress = AtomicBoolean(false)
     private val frameInFlight = AtomicBoolean(false)
+    private val previewFrameInFlight = AtomicBoolean(false)
 
     private var backgroundThread: HandlerThread? = null
     private var backgroundHandler: Handler? = null
     private var imageReader: ImageReader? = null
     private var cameraDevice: CameraDevice? = null
     private var captureSession: CameraCaptureSession? = null
-    private var activeSize: Size? = null
+    private var lastPreviewFrameAtMs: Long = 0L
 
     fun resumeScanning() {
         AppLogger.debug("Scanner resumed")
@@ -52,8 +51,8 @@ class QuestCameraSession(
 
     @SuppressLint("MissingPermission")
     fun start() {
-        if (!textureView.isAvailable || captureSession != null || cameraDevice != null) {
-            AppLogger.debug("Ignoring scanner start because a session is already active or preview is unavailable")
+        if (captureSession != null || cameraDevice != null) {
+            AppLogger.debug("Ignoring scanner start because a session is already active")
             return
         }
 
@@ -65,24 +64,16 @@ class QuestCameraSession(
         }
 
         startBackgroundThread()
-        activeSize = chooseSize(config.outputSizes)
-        val size = activeSize ?: run {
+        val analysisSize = chooseAnalysisSize(config.analysisOutputSizes) ?: run {
             AppLogger.error("Unable to select a passthrough camera output size")
             dispatchStatus(R.string.status_camera_unavailable)
             return
         }
-        AppLogger.info("Opening passthrough camera ${config.cameraId} at ${size.width}x${size.height}")
+        AppLogger.info(
+            "Opening passthrough camera ${config.cameraId} analysis=${analysisSize.width}x${analysisSize.height}"
+        )
 
-        val surfaceTexture = textureView.surfaceTexture ?: run {
-            AppLogger.error("Preview surface texture was unavailable when starting the camera")
-            dispatchStatus(R.string.status_camera_unavailable)
-            return
-        }
-
-        surfaceTexture.setDefaultBufferSize(size.width, size.height)
-        applyPreviewTransform(size)
-
-        imageReader = ImageReader.newInstance(size.width, size.height, ImageFormat.YUV_420_888, 2).apply {
+        imageReader = ImageReader.newInstance(analysisSize.width, analysisSize.height, ImageFormat.YUV_420_888, 2).apply {
             setOnImageAvailableListener({ reader ->
                 val image = reader.acquireLatestImage() ?: return@setOnImageAvailableListener
                 if (!frameInFlight.compareAndSet(false, true)) {
@@ -93,12 +84,11 @@ class QuestCameraSession(
                 cameraExecutor.execute {
                     try {
                         image.use { latest ->
+                            maybeDispatchPreviewFrame(latest)
                             val result = decoder.decode(latest)
                             if (result != null && scanInProgress.compareAndSet(false, true)) {
                                 AppLogger.info("QR decode succeeded")
-                                textureView.post {
-                                    onQrDetected(result.text)
-                                }
+                                onQrDetected(result.text)
                             }
                         }
                     } catch (t: Throwable) {
@@ -114,7 +104,7 @@ class QuestCameraSession(
             override fun onOpened(camera: CameraDevice) {
                 AppLogger.info("Passthrough camera opened")
                 cameraDevice = camera
-                createSession(camera, surfaceTexture)
+                createSession(camera)
             }
 
             override fun onDisconnected(camera: CameraDevice) {
@@ -143,18 +133,18 @@ class QuestCameraSession(
         imageReader = null
         scanInProgress.set(false)
         frameInFlight.set(false)
+        previewFrameInFlight.set(false)
+        lastPreviewFrameAtMs = 0L
         stopBackgroundThread()
     }
 
-    private fun createSession(camera: CameraDevice, surfaceTexture: SurfaceTexture) {
-        val previewSurface = Surface(surfaceTexture)
+    private fun createSession(camera: CameraDevice) {
         val imageSurface = imageReader?.surface ?: return
 
         camera.createCaptureSession(
             SessionConfiguration(
                 SessionConfiguration.SESSION_REGULAR,
                 listOf(
-                    OutputConfiguration(previewSurface),
                     OutputConfiguration(imageSurface)
                 ),
                 cameraExecutor,
@@ -163,7 +153,6 @@ class QuestCameraSession(
                         AppLogger.info("Camera capture session configured")
                         captureSession = session
                         val request = camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
-                            addTarget(previewSurface)
                             addTarget(imageSurface)
                             set(
                                 CaptureRequest.CONTROL_AF_MODE,
@@ -204,34 +193,76 @@ class QuestCameraSession(
         backgroundHandler = null
     }
 
-    private fun chooseSize(sizes: Array<Size>): Size? {
+    private fun chooseAnalysisSize(sizes: Array<Size>): Size? {
         return sizes
             .sortedByDescending { it.width * it.height }
-            .firstOrNull { it.width <= 1280 && it.height <= 1280 }
+            .firstOrNull { it.width == 1280 && it.height == 1280 }
+            ?: sizes.firstOrNull { it.width <= 1280 && it.height <= 1280 }
             ?: sizes.minByOrNull { it.width * it.height }
     }
 
-    private fun applyPreviewTransform(bufferSize: Size) {
-        val viewWidth = textureView.width.toFloat()
-        val viewHeight = textureView.height.toFloat()
-        if (viewWidth == 0f || viewHeight == 0f) {
+    private fun maybeDispatchPreviewFrame(image: android.media.Image) {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastPreviewFrameAtMs < PREVIEW_FRAME_INTERVAL_MS) {
+            return
+        }
+        if (!previewFrameInFlight.compareAndSet(false, true)) {
             return
         }
 
-        val scale = maxOf(
-            viewWidth / bufferSize.width.toFloat(),
-            viewHeight / bufferSize.height.toFloat()
-        )
-        val scaledWidth = bufferSize.width * scale
-        val scaledHeight = bufferSize.height * scale
-        val dx = (viewWidth - scaledWidth) / 2f
-        val dy = (viewHeight - scaledHeight) / 2f
-
-        val matrix = Matrix().apply {
-            setScale(scale, scale)
-            postTranslate(dx, dy)
+        if (image.planes.size < 3) {
+            previewFrameInFlight.set(false)
+            return
         }
-        textureView.setTransform(matrix)
+        val previewBitmap = image.toPreviewBitmap()
+        lastPreviewFrameAtMs = now
+        onPreviewFrame(previewBitmap)
+        previewFrameInFlight.set(false)
+    }
+
+    private fun android.media.Image.toPreviewBitmap(): Bitmap {
+        val sample = PREVIEW_SAMPLE_STEP
+        val width = width
+        val height = height
+        val outWidth = width / sample
+        val outHeight = height / sample
+        val pixels = IntArray(outWidth * outHeight)
+        val yPlane = planes[0]
+        val uPlane = planes[1]
+        val vPlane = planes[2]
+        val yBuffer = yPlane.buffer.duplicate()
+        val uBuffer = uPlane.buffer.duplicate()
+        val vBuffer = vPlane.buffer.duplicate()
+        val yRowData = ByteArray(yPlane.rowStride)
+        val uvRowDataU = ByteArray(uPlane.rowStride)
+        val uvRowDataV = ByteArray(vPlane.rowStride)
+        var index = 0
+
+        for (row in 0 until outHeight) {
+            val sourceRow = row * sample
+            val uvSourceRow = sourceRow / 2
+            yBuffer.position(sourceRow * yPlane.rowStride)
+            yBuffer.get(yRowData, 0, yPlane.rowStride)
+            uBuffer.position(uvSourceRow * uPlane.rowStride)
+            uBuffer.get(uvRowDataU, 0, uPlane.rowStride)
+            vBuffer.position(uvSourceRow * vPlane.rowStride)
+            vBuffer.get(uvRowDataV, 0, vPlane.rowStride)
+
+            for (col in 0 until outWidth) {
+                val sourceCol = col * sample
+                val uvCol = sourceCol / 2
+                val y = yRowData[sourceCol * yPlane.pixelStride].toInt() and 0xFF
+                val u = (uvRowDataU[uvCol * uPlane.pixelStride].toInt() and 0xFF) - 128
+                val v = (uvRowDataV[uvCol * vPlane.pixelStride].toInt() and 0xFF) - 128
+
+                val r = (y + 1.402f * v).toInt().coerceIn(0, 255)
+                val g = (y - 0.344136f * u - 0.714136f * v).toInt().coerceIn(0, 255)
+                val b = (y + 1.772f * u).toInt().coerceIn(0, 255)
+                pixels[index++] = -0x1000000 or (r shl 16) or (g shl 8) or b
+            }
+        }
+
+        return Bitmap.createBitmap(pixels, outWidth, outHeight, Bitmap.Config.ARGB_8888)
     }
 
     private fun findPassthroughConfig(): CameraConfig? {
@@ -245,15 +276,17 @@ class QuestCameraSession(
                     return@mapNotNull null
                 }
 
-                val outputSizes = characteristics
+                val scalerMap = characteristics
                     .get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
-                    ?.getOutputSizes(ImageFormat.YUV_420_888)
+                    ?: return@mapNotNull null
+
+                val analysisOutputSizes = scalerMap.getOutputSizes(ImageFormat.YUV_420_888)
                     ?: return@mapNotNull null
 
                 CameraConfig(
                     cameraId = cameraId,
                     position = characteristics.get(positionKey),
-                    outputSizes = outputSizes
+                    analysisOutputSizes = analysisOutputSizes
                 )
             }
             .sortedWith(compareBy<CameraConfig> { it.position ?: Int.MAX_VALUE }.thenBy { it.cameraId })
@@ -261,20 +294,20 @@ class QuestCameraSession(
     }
 
     private fun dispatchStatus(messageId: Int) {
-        textureView.post {
-            onStatusChanged(messageId)
-        }
+        onStatusChanged(messageId)
     }
 
     private data class CameraConfig(
         val cameraId: String,
         val position: Int?,
-        val outputSizes: Array<Size>
+        val analysisOutputSizes: Array<Size>
     )
 
     private companion object {
         const val META_CAMERA_SOURCE = "com.meta.extra_metadata.camera_source"
         const val META_CAMERA_POSITION = "com.meta.extra_metadata.position"
         const val PASSTHROUGH_SOURCE = 0
+        const val PREVIEW_FRAME_INTERVAL_MS = 120L
+        const val PREVIEW_SAMPLE_STEP = 4
     }
 }

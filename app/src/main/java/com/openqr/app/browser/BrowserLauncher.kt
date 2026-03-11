@@ -1,9 +1,9 @@
-package com.zephyr.qr.browser
+package com.openqr.app.browser
 
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
-import com.zephyr.qr.logging.AppLogger
+import com.openqr.app.logging.AppLogger
 import java.net.URI
 
 object BrowserLauncher {

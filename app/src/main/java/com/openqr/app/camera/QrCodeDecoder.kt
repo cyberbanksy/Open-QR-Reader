@@ -1,4 +1,4 @@
-package com.zephyr.qr.camera
+package com.openqr.app.camera
 
 import android.media.Image
 import com.google.zxing.BinaryBitmap
