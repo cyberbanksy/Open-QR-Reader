@@ -16,11 +16,11 @@ val configuredVersionName = providers.gradleProperty("appVersionName").orNull
     ?: versionProperties.getProperty("VERSION_NAME")
 
 android {
-    namespace = "com.openqr.app"
+    namespace = "com.orgista.openqr"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.openqr.app"
+        applicationId = "com.orgista.openqr"
         minSdk = 34
         targetSdk = 34
         versionCode = configuredVersionCode

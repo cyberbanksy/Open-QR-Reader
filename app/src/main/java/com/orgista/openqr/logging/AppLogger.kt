@@ -1,7 +1,7 @@
-package com.openqr.app.logging
+package com.orgista.openqr.logging
 
 import android.util.Log
-import com.openqr.app.BuildConfig
+import com.orgista.openqr.BuildConfig
 
 object AppLogger {
     private const val TAG = "OpenQR"

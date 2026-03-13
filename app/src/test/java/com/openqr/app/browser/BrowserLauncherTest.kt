@@ -1,4 +1,4 @@
-package com.openqr.app.browser
+package com.orgista.openqr.browser
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull

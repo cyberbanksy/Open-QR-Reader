@@ -1,4 +1,4 @@
-package com.openqr.app.camera
+package com.orgista.openqr.camera
 
 import android.media.Image
 import com.google.zxing.BinaryBitmap

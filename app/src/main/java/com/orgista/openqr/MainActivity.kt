@@ -1,8 +1,9 @@
-package com.openqr.app
+package com.orgista.openqr
 
 import android.Manifest
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
+import android.content.res.Configuration
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.RenderEffect
@@ -16,30 +17,20 @@ import android.os.Looper
 import android.provider.Settings
 import android.view.View
 import android.view.animation.LinearInterpolator
-import android.widget.Button
-import android.widget.ImageView
-import android.widget.ImageButton
-import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.updateLayoutParams
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator
-import com.openqr.app.browser.BrowserLauncher
-import com.openqr.app.browser.LaunchResult
-import com.openqr.app.camera.QuestCameraSession
-import com.openqr.app.logging.AppLogger
+import com.orgista.openqr.browser.BrowserLauncher
+import com.orgista.openqr.browser.LaunchResult
+import com.orgista.openqr.camera.QuestCameraSession
+import com.orgista.openqr.logging.AppLogger
+import com.orgista.openqr.databinding.ActivityMainBinding
+import kotlin.math.min
+import kotlin.math.roundToInt
 
 class MainActivity : AppCompatActivity() {
-    private lateinit var stateIcon: ImageView
-    private lateinit var statusText: TextView
-    private lateinit var actionButton: Button
-    private lateinit var cameraModeButton: ImageButton
-    private lateinit var cameraPreview: ImageView
-    private lateinit var previewScrim: View
-    private lateinit var scannerEdgeGlow: View
-    private lateinit var pulseRing: View
-    private lateinit var bracketsView: ImageView
-    private lateinit var sweepView: ImageView
-    private lateinit var centerDot: View
+    private lateinit var binding: ActivityMainBinding
     private lateinit var cameraSession: QuestCameraSession
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -76,20 +67,15 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         AppLogger.info("MainActivity created")
         window.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-        setContentView(R.layout.activity_main)
+        
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
 
-        stateIcon = findViewById(R.id.state_icon)
-        statusText = findViewById(R.id.status_text)
-        actionButton = findViewById(R.id.action_button)
-        cameraModeButton = findViewById(R.id.camera_mode_button)
-        cameraPreview = findViewById(R.id.camera_preview)
-        previewScrim = findViewById(R.id.preview_scrim)
-        scannerEdgeGlow = findViewById(R.id.scanner_edge_glow)
-        pulseRing = findViewById(R.id.pulse_ring)
-        bracketsView = findViewById(R.id.brackets_view)
-        sweepView = findViewById(R.id.sweep_view)
-        centerDot = findViewById(R.id.center_dot)
         applyPreviewMode()
+        binding.scannerShell.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            applyResponsiveSizing()
+        }
+        binding.scannerShell.post { applyResponsiveSizing() }
 
         cameraSession = QuestCameraSession(
             context = this,
@@ -98,8 +84,10 @@ class MainActivity : AppCompatActivity() {
             onPreviewFrame = ::renderPreviewFrame
         )
 
-        actionButton.setOnClickListener {
-            if (hasAllPermissions()) {
+        binding.actionButton.setOnClickListener {
+            if (scanRequested) {
+                stopScannerFromActionButton()
+            } else if (hasAllPermissions()) {
                 scanRequested = true
                 startScanner()
             } else if (permanentDenial) {
@@ -108,19 +96,20 @@ class MainActivity : AppCompatActivity() {
                 requestPermissions()
             }
         }
-        cameraModeButton.setOnClickListener {
+        binding.cameraModeButton.setOnClickListener {
             if (hasAllPermissions()) {
                 cameraModeEnabled = !cameraModeEnabled
                 if (!cameraModeEnabled) {
+                    cameraSession.pauseScanning()
+                    if (!scanRequested) {
+                        cameraSession.stop()
+                    }
                     clearPreviewFrame()
+                    renderReadyState()
+                } else {
+                    startPreviewMode()
                 }
                 applyPreviewMode()
-                if (cameraModeEnabled) {
-                    scanRequested = true
-                    startScanner()
-                } else if (!scanRequested) {
-                    renderReadyState()
-                }
             } else if (permanentDenial) {
                 openAppSettings()
             } else {
@@ -134,10 +123,20 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         AppLogger.debug("MainActivity resumed")
-        if (!browserHandoffComplete && scanRequested && hasAllPermissions()) {
-            shouldStartWhenReady = true
-            startScanner()
+        applyResponsiveSizing()
+        if (!browserHandoffComplete && hasAllPermissions()) {
+            if (scanRequested) {
+                shouldStartWhenReady = true
+                startScanner()
+            } else if (cameraModeEnabled) {
+                startPreviewMode()
+            }
         }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        binding.scannerShell.post { applyResponsiveSizing() }
     }
 
     override fun onPause() {
@@ -185,6 +184,9 @@ class MainActivity : AppCompatActivity() {
             AppLogger.debug("Window focus regained; resuming scanner")
             shouldStartWhenReady = true
             startScanner()
+        } else if (!browserHandoffComplete && cameraModeEnabled && hasAllPermissions()) {
+            AppLogger.debug("Window focus regained; resuming preview")
+            startPreviewMode()
         }
     }
 
@@ -212,6 +214,7 @@ class MainActivity : AppCompatActivity() {
             buttonTextRes = R.string.action_start_scan,
             iconRes = null
         )
+        startIdleAnimation()
     }
 
     private fun startScanner() {
@@ -251,22 +254,59 @@ class MainActivity : AppCompatActivity() {
         mainHandler.postDelayed(pendingScanTimeout!!, SCAN_SESSION_TIMEOUT_MS)
     }
 
+    private fun startPreviewMode() {
+        clearPendingBrowserHandoff()
+        clearPendingScanTimeout()
+        if (!cameraSession.hasPassthroughCamera()) {
+            AppLogger.warn("Preview mode unavailable because passthrough camera is missing")
+            renderState(
+                statusRes = R.string.status_unsupported_device,
+                buttonTextRes = R.string.action_unavailable,
+                iconRes = R.drawable.ic_state_warning,
+                buttonEnabled = false
+            )
+            cameraModeEnabled = false
+            applyPreviewMode()
+            return
+        }
+        AppLogger.info("Starting preview-only camera session")
+        cameraSession.pauseScanning()
+        cameraSession.start()
+        renderReadyState()
+    }
+
     private fun renderScanningState() {
         stopVisualAnimations()
-        statusText.visibility = View.GONE
-        stateIcon.visibility = View.GONE
-        actionButton.visibility = View.VISIBLE
-        actionButton.isEnabled = false
-        actionButton.setText(R.string.action_scanning)
-        cameraModeButton.visibility = View.VISIBLE
-        cameraModeButton.isEnabled = false
-        cameraModeButton.isSelected = cameraModeEnabled
-        pulseRing.visibility = View.VISIBLE
-        bracketsView.visibility = View.VISIBLE
-        sweepView.visibility = View.VISIBLE
-        centerDot.visibility = View.VISIBLE
+        binding.statusText.visibility = View.GONE
+        binding.stateIcon.visibility = View.GONE
+        binding.actionButton.visibility = View.VISIBLE
+        binding.actionButton.isEnabled = true
+        binding.actionButton.setText(R.string.action_scanning)
+        binding.cameraModeButton.visibility = View.VISIBLE
+        binding.cameraModeButton.isEnabled = true
+        binding.cameraModeButton.isActivated = cameraModeEnabled
+        binding.pulseRing.visibility = View.VISIBLE
+        binding.bracketsView.visibility = View.VISIBLE
+        binding.sweepView.visibility = View.VISIBLE
+        binding.centerDot.visibility = View.VISIBLE
         applyPreviewMode()
         startScanAnimation()
+    }
+
+    private fun stopScannerFromActionButton() {
+        AppLogger.info("Stopping scanner session from action button")
+        clearPendingBrowserHandoff()
+        clearPendingScanTimeout()
+        scanRequested = false
+        cameraSession.pauseScanning()
+
+        if (cameraModeEnabled) {
+            startPreviewMode()
+        } else {
+            cameraSession.stop()
+            clearPreviewFrame()
+            renderReadyState()
+        }
     }
 
     private fun handleQrCode(rawValue: String) {
@@ -378,87 +418,178 @@ class MainActivity : AppCompatActivity() {
     ) {
         stopVisualAnimations()
 
-        pulseRing.visibility = View.GONE
-        bracketsView.visibility = View.GONE
-        sweepView.visibility = View.GONE
-        centerDot.visibility = View.GONE
+        binding.pulseRing.visibility = View.GONE
+        binding.bracketsView.visibility = View.GONE
+        binding.sweepView.visibility = View.GONE
+        binding.centerDot.visibility = View.GONE
 
         if (statusRes == null) {
-            statusText.visibility = View.GONE
+            binding.statusText.visibility = View.GONE
         } else {
-            statusText.visibility = View.VISIBLE
-            statusText.setText(statusRes)
+            binding.statusText.visibility = View.VISIBLE
+            binding.statusText.setText(statusRes)
         }
 
         if (iconRes == null) {
-            stateIcon.visibility = View.GONE
+            binding.stateIcon.visibility = View.GONE
         } else {
-            stateIcon.visibility = View.VISIBLE
-            stateIcon.setImageResource(iconRes)
+            binding.stateIcon.visibility = View.VISIBLE
+            binding.stateIcon.setImageResource(iconRes)
             startIconPulse()
         }
 
-        actionButton.visibility = View.VISIBLE
-        actionButton.isEnabled = buttonEnabled
-        actionButton.setText(buttonTextRes)
-        cameraModeButton.visibility = View.VISIBLE
-        cameraModeButton.isEnabled = true
-        cameraModeButton.isSelected = cameraModeEnabled
+        binding.actionButton.visibility = View.VISIBLE
+        binding.actionButton.isEnabled = buttonEnabled
+        binding.actionButton.setText(buttonTextRes)
+        binding.cameraModeButton.visibility = View.VISIBLE
+        binding.cameraModeButton.isEnabled = true
+        binding.cameraModeButton.isActivated = cameraModeEnabled
         applyPreviewMode()
+    }
+
+    private fun startIdleAnimation() {
+        binding.pulseRing.visibility = View.VISIBLE
+        binding.bracketsView.visibility = View.VISIBLE
+        binding.sweepView.visibility = View.VISIBLE
+        binding.centerDot.visibility = View.VISIBLE
+
+        binding.pulseRing.scaleX = 1f
+        binding.pulseRing.scaleY = 1f
+        binding.pulseRing.alpha = 0.14f
+        binding.bracketsView.rotation = 0f
+        binding.bracketsView.alpha = 0.44f
+        binding.sweepView.rotation = 0f
+        binding.sweepView.alpha = 0.16f
+        binding.centerDot.alpha = 0.55f
+
+        pulseAnimator = AnimatorSet().apply {
+            playTogether(
+                ObjectAnimator.ofFloat(binding.pulseRing, View.SCALE_X, 1f, 1.12f, 1f).apply {
+                    duration = 3600L
+                    repeatCount = ObjectAnimator.INFINITE
+                    repeatMode = ObjectAnimator.RESTART
+                    interpolator = FastOutSlowInInterpolator()
+                },
+                ObjectAnimator.ofFloat(binding.pulseRing, View.SCALE_Y, 1f, 1.12f, 1f).apply {
+                    duration = 3600L
+                    repeatCount = ObjectAnimator.INFINITE
+                    repeatMode = ObjectAnimator.RESTART
+                    interpolator = FastOutSlowInInterpolator()
+                },
+                ObjectAnimator.ofFloat(binding.pulseRing, View.ALPHA, 0.12f, 0.2f, 0.12f).apply {
+                    duration = 3600L
+                    repeatCount = ObjectAnimator.INFINITE
+                    repeatMode = ObjectAnimator.RESTART
+                    interpolator = FastOutSlowInInterpolator()
+                }
+            )
+            start()
+        }
+
+        bracketsAnimator = ObjectAnimator.ofFloat(binding.bracketsView, View.ROTATION, 0f, 360f).apply {
+            duration = 22000L
+            repeatCount = ObjectAnimator.INFINITE
+            repeatMode = ObjectAnimator.RESTART
+            interpolator = LinearInterpolator()
+            start()
+        }
+
+        sweepAnimator = ObjectAnimator.ofFloat(binding.sweepView, View.ROTATION, 0f, 360f).apply {
+            duration = 9000L
+            repeatCount = ObjectAnimator.INFINITE
+            repeatMode = ObjectAnimator.RESTART
+            interpolator = LinearInterpolator()
+            start()
+        }
+
+        edgeGlowAnimator = ObjectAnimator.ofFloat(
+            binding.scannerEdgeGlow,
+            View.ALPHA,
+            if (cameraModeEnabled) 0.2f else 0.12f,
+            if (cameraModeEnabled) 0.3f else 0.18f,
+            if (cameraModeEnabled) 0.2f else 0.12f
+        ).apply {
+            duration = 2600L
+            repeatCount = ObjectAnimator.INFINITE
+            repeatMode = ObjectAnimator.RESTART
+            interpolator = FastOutSlowInInterpolator()
+            start()
+        }
     }
 
     private fun applyPreviewMode() {
         val previewAlpha = if (cameraModeEnabled) 0.98f else 0f
-        val scrimAlpha = if (cameraModeEnabled) 0.10f else 0f
-        val glowAlpha = if (cameraModeEnabled) 0.48f else 0.78f
+        val scrimAlpha = if (cameraModeEnabled) 0.08f else 0f
+        val glowAlpha = if (cameraModeEnabled) 0.22f else 0.12f
 
-        cameraPreview.setRenderEffect(
+        binding.cameraPreview.setRenderEffect(
             if (cameraModeEnabled) {
                 RenderEffect.createBlurEffect(1.5f, 1.5f, Shader.TileMode.CLAMP)
             } else {
                 null
             }
         )
-        cameraPreview.alpha = previewAlpha
-        previewScrim.alpha = scrimAlpha
-        scannerEdgeGlow.alpha = glowAlpha
-        if (::cameraModeButton.isInitialized) {
-            cameraModeButton.isSelected = cameraModeEnabled
-        }
+        binding.cameraPreview.alpha = previewAlpha
+        binding.previewScrim.alpha = scrimAlpha
+        binding.scannerEdgeGlow.alpha = glowAlpha
+        binding.cameraModeButton.isActivated = cameraModeEnabled
     }
 
     private fun renderPreviewFrame(bitmap: Bitmap) {
-        cameraPreview.post {
-            cameraPreview.setImageBitmap(bitmap)
+        binding.cameraPreview.post {
+            binding.cameraPreview.setImageBitmap(bitmap)
         }
     }
 
     private fun clearPreviewFrame() {
-        cameraPreview.setImageDrawable(null)
+        binding.cameraPreview.setImageDrawable(null)
+    }
+
+    private fun applyResponsiveSizing() {
+        val shellWidth = binding.scannerShell.width
+        val shellHeight = binding.scannerShell.height
+        if (shellWidth == 0 || shellHeight == 0) {
+            return
+        }
+
+        val shellSize = min(shellWidth, shellHeight).toFloat()
+        resizeSquareView(binding.sweepView, (shellSize * 0.38f).roundToInt())
+        resizeSquareView(binding.pulseRing, (shellSize * 0.30f).roundToInt())
+        resizeSquareView(binding.bracketsView, (shellSize * 0.24f).roundToInt())
+        resizeSquareView(binding.stateIcon, (shellSize * 0.34f).roundToInt())
+        resizeSquareView(binding.centerDot, (shellSize * 0.03f).roundToInt())
+    }
+
+    private fun resizeSquareView(view: View, sizePx: Int) {
+        val clamped = sizePx.coerceAtLeast(6)
+        view.updateLayoutParams {
+            width = clamped
+            height = clamped
+        }
     }
 
     private fun startScanAnimation() {
-        pulseRing.scaleX = 1f
-        pulseRing.scaleY = 1f
-        pulseRing.alpha = 0.3f
-        bracketsView.rotation = 0f
-        sweepView.rotation = 0f
+        binding.pulseRing.scaleX = 1f
+        binding.pulseRing.scaleY = 1f
+        binding.pulseRing.alpha = 0.3f
+        binding.bracketsView.rotation = 0f
+        binding.sweepView.rotation = 0f
 
         pulseAnimator = AnimatorSet().apply {
             playTogether(
-                ObjectAnimator.ofFloat(pulseRing, View.SCALE_X, 1f, 1.35f, 1f).apply {
+                ObjectAnimator.ofFloat(binding.pulseRing, View.SCALE_X, 1f, 1.35f, 1f).apply {
                     duration = 3000L
                     repeatCount = ObjectAnimator.INFINITE
                     repeatMode = ObjectAnimator.RESTART
                     interpolator = FastOutSlowInInterpolator()
                 },
-                ObjectAnimator.ofFloat(pulseRing, View.SCALE_Y, 1f, 1.35f, 1f).apply {
+                ObjectAnimator.ofFloat(binding.pulseRing, View.SCALE_Y, 1f, 1.35f, 1f).apply {
                     duration = 3000L
                     repeatCount = ObjectAnimator.INFINITE
                     repeatMode = ObjectAnimator.RESTART
                     interpolator = FastOutSlowInInterpolator()
                 },
-                ObjectAnimator.ofFloat(pulseRing, View.ALPHA, 0.32f, 0.1f, 0.32f).apply {
+                ObjectAnimator.ofFloat(binding.pulseRing, View.ALPHA, 0.32f, 0.1f, 0.32f).apply {
                     duration = 3000L
                     repeatCount = ObjectAnimator.INFINITE
                     repeatMode = ObjectAnimator.RESTART
@@ -468,7 +599,7 @@ class MainActivity : AppCompatActivity() {
             start()
         }
 
-        bracketsAnimator = ObjectAnimator.ofFloat(bracketsView, View.ROTATION, 0f, 360f).apply {
+        bracketsAnimator = ObjectAnimator.ofFloat(binding.bracketsView, View.ROTATION, 0f, 360f).apply {
             duration = 10000L
             repeatCount = ObjectAnimator.INFINITE
             repeatMode = ObjectAnimator.RESTART
@@ -476,7 +607,7 @@ class MainActivity : AppCompatActivity() {
             start()
         }
 
-        sweepAnimator = ObjectAnimator.ofFloat(sweepView, View.ROTATION, 0f, 360f).apply {
+        sweepAnimator = ObjectAnimator.ofFloat(binding.sweepView, View.ROTATION, 0f, 360f).apply {
             duration = 4000L
             repeatCount = ObjectAnimator.INFINITE
             repeatMode = ObjectAnimator.RESTART
@@ -484,7 +615,7 @@ class MainActivity : AppCompatActivity() {
             start()
         }
 
-        edgeGlowAnimator = ObjectAnimator.ofFloat(scannerEdgeGlow, View.ALPHA, 0.72f, 1f, 0.72f).apply {
+        edgeGlowAnimator = ObjectAnimator.ofFloat(binding.scannerEdgeGlow, View.ALPHA, 0.72f, 1f, 0.72f).apply {
             duration = 1800L
             repeatCount = ObjectAnimator.INFINITE
             repeatMode = ObjectAnimator.RESTART
@@ -494,12 +625,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startIconPulse() {
-        stateIcon.scaleX = 0.92f
-        stateIcon.scaleY = 0.92f
-        stateIcon.alpha = 0.85f
-        val scaleX = ObjectAnimator.ofFloat(stateIcon, View.SCALE_X, 0.92f, 1f)
-        val scaleY = ObjectAnimator.ofFloat(stateIcon, View.SCALE_Y, 0.92f, 1f)
-        val alpha = ObjectAnimator.ofFloat(stateIcon, View.ALPHA, 0.85f, 1f)
+        binding.stateIcon.scaleX = 0.92f
+        binding.stateIcon.scaleY = 0.92f
+        binding.stateIcon.alpha = 0.85f
+        val scaleX = ObjectAnimator.ofFloat(binding.stateIcon, View.SCALE_X, 0.92f, 1f)
+        val scaleY = ObjectAnimator.ofFloat(binding.stateIcon, View.SCALE_Y, 0.92f, 1f)
+        val alpha = ObjectAnimator.ofFloat(binding.stateIcon, View.ALPHA, 0.85f, 1f)
         stateIconAnimator = AnimatorSet().apply {
             duration = 240L
             interpolator = FastOutSlowInInterpolator()
@@ -519,7 +650,7 @@ class MainActivity : AppCompatActivity() {
         edgeGlowAnimator = null
         stateIconAnimator?.cancel()
         stateIconAnimator = null
-        scannerEdgeGlow.alpha = 0.82f
+        binding.scannerEdgeGlow.alpha = if (cameraModeEnabled) 0.22f else 0.12f
     }
 
     private fun clearPendingBrowserHandoff() {
@@ -535,7 +666,7 @@ class MainActivity : AppCompatActivity() {
     private companion object {
         const val BROWSER_HANDOFF_DELAY_MS = 550L
         const val FINISH_AFTER_HANDOFF_DELAY_MS = 250L
-        const val SCAN_SESSION_TIMEOUT_MS = 3500L
+        const val SCAN_SESSION_TIMEOUT_MS = 10000L
         val REQUIRED_PERMISSIONS = arrayOf(
             Manifest.permission.CAMERA,
             "horizonos.permission.HEADSET_CAMERA"

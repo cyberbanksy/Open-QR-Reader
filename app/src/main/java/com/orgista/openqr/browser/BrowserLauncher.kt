@@ -1,9 +1,9 @@
-package com.openqr.app.browser
+package com.orgista.openqr.browser
 
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
-import com.openqr.app.logging.AppLogger
+import com.orgista.openqr.logging.AppLogger
 import java.net.URI
 
 object BrowserLauncher {

@@ -1,4 +1,4 @@
-package com.openqr.app.camera
+package com.orgista.openqr.camera
 
 import android.annotation.SuppressLint
 import android.content.Context
@@ -16,8 +16,8 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.SystemClock
 import android.util.Size
-import com.openqr.app.R
-import com.openqr.app.logging.AppLogger
+import com.orgista.openqr.R
+import com.orgista.openqr.logging.AppLogger
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -31,6 +31,7 @@ class QuestCameraSession(
     private val cameraManager = appContext.getSystemService(CameraManager::class.java)
     private val decoder = QrCodeDecoder()
     private val cameraExecutor = Executors.newSingleThreadExecutor()
+    private val decodeEnabled = AtomicBoolean(false)
     private val scanInProgress = AtomicBoolean(false)
     private val frameInFlight = AtomicBoolean(false)
     private val previewFrameInFlight = AtomicBoolean(false)
@@ -44,6 +45,13 @@ class QuestCameraSession(
 
     fun resumeScanning() {
         AppLogger.debug("Scanner resumed")
+        decodeEnabled.set(true)
+        scanInProgress.set(false)
+    }
+
+    fun pauseScanning() {
+        AppLogger.debug("Scanner paused")
+        decodeEnabled.set(false)
         scanInProgress.set(false)
     }
 
@@ -85,6 +93,9 @@ class QuestCameraSession(
                     try {
                         image.use { latest ->
                             maybeDispatchPreviewFrame(latest)
+                            if (!decodeEnabled.get()) {
+                                return@use
+                            }
                             val result = decoder.decode(latest)
                             if (result != null && scanInProgress.compareAndSet(false, true)) {
                                 AppLogger.info("QR decode succeeded")
@@ -131,6 +142,7 @@ class QuestCameraSession(
         cameraDevice = null
         imageReader?.close()
         imageReader = null
+        decodeEnabled.set(false)
         scanInProgress.set(false)
         frameInFlight.set(false)
         previewFrameInFlight.set(false)
