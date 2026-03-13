@@ -1,35 +1,41 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/preview_container_background"
     android:clipToOutline="true"
-    android:elevation="10dp"
+    android:elevation="0dp"
     android:orientation="vertical"
-    android:paddingStart="18dp"
-    android:paddingTop="18dp"
-    android:paddingEnd="18dp"
-    android:paddingBottom="18dp">
+    android:paddingStart="14dp"
+    android:paddingTop="14dp"
+    android:paddingEnd="14dp"
+    android:paddingBottom="14dp">
 
     <TextView
         android:id="@+id/title_text"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
         android:fontFamily="sans-serif-medium"
+        android:gravity="center"
         android:text="@string/app_name"
         android:textColor="@color/text_primary"
-        android:textSize="21sp" />
+        android:textSize="22sp" />
 
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="12dp"
+        android:layout_marginTop="10dp"
         android:layout_weight="1">
 
         <FrameLayout
             android:id="@+id/scanner_shell"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
+            android:layout_marginStart="6dp"
+            android:layout_marginTop="12dp"
+            android:layout_marginEnd="6dp"
+            android:layout_marginBottom="12dp"
             android:background="@drawable/scanner_surface_background"
             android:clipToOutline="true">
 
@@ -50,7 +56,7 @@
                 android:id="@+id/scanner_edge_glow"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:alpha="0.82"
+                android:alpha="0.28"
                 android:background="@drawable/scanner_inner_glow" />
 
             <FrameLayout
@@ -103,48 +109,64 @@
         android:id="@+id/status_text"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
+        android:layout_marginTop="8dp"
         android:fontFamily="sans-serif-medium"
         android:gravity="center"
         android:textColor="@color/text_secondary"
-        android:textSize="14sp"
+        android:textSize="13sp"
         android:visibility="gone" />
 
     <LinearLayout
         android:id="@+id/action_row"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
+        android:layout_height="48dp"
+        android:layout_marginTop="10dp"
         android:baselineAligned="false"
-        android:gravity="center"
+        android:gravity="center_vertical"
         android:orientation="horizontal">
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
 
         <ImageButton
             android:id="@+id/camera_mode_button"
-            android:layout_width="54dp"
-            android:layout_height="54dp"
-            android:layout_marginEnd="12dp"
-            android:background="@drawable/secondary_action_button_background"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="@drawable/camera_action_button_background"
             android:contentDescription="@string/action_camera_mode"
-            android:padding="13dp"
+            android:padding="11dp"
             android:scaleType="centerInside"
             android:src="@drawable/ic_camera_mode"
-            android:tint="@color/text_primary" />
+            app:tint="@color/camera_button_content_tint" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
 
         <Button
             android:id="@+id/action_button"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
             android:background="@drawable/action_button_background"
             android:fontFamily="sans-serif-medium"
-            android:paddingStart="22dp"
-            android:paddingTop="15dp"
-            android:paddingEnd="22dp"
-            android:paddingBottom="15dp"
+            android:gravity="center"
+            android:minHeight="48dp"
+            android:minWidth="88dp"
+            android:paddingStart="18dp"
+            android:paddingTop="0dp"
+            android:paddingEnd="18dp"
+            android:paddingBottom="0dp"
             android:text="@string/action_scanning"
             android:textAllCaps="false"
-            android:textColor="@color/action_button_text"
-            android:textSize="15sp" />
+            android:textColor="@color/action_button_content_tint"
+            android:textSize="14sp" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
     </LinearLayout>
 </LinearLayout>
